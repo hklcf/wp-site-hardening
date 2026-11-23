@@ -4,6 +4,38 @@ All notable changes to WP Site Hardening are recorded here. This is the
 only place the full version history is kept; `README.md` and `readme.txt`
 only point here.
 
+## 1.0.6 — 2026-11-24
+
+- Fix: logout was still broken in 1.0.5. The logout link had no nonce at
+  all, so WordPress only showed the "Are you sure?" page and logout
+  looped forever. Cause: the `logout_url` filter rebuilt the URL and
+  copied `_wpnonce` back with `parse_str()`, but the URL arrives
+  HTML-encoded (`&amp;`), and `parse_str()` reads that as a key
+  literally named `amp;_wpnonce` — so the nonce was silently dropped.
+  The filter now decodes `&amp;` first and keeps the whole query
+  string (action, nonce, redirect) verbatim instead of copying
+  individual parameters.
+- Fix: a logged-out visitor opening `/login` was redirected straight
+  to the custom login URL, giving the secret slug away. WordPress
+  redirects `/login` (and `/login.php`) to `wp_login_url()`, and the
+  old filter only sent `/wp-admin/` probes to the home page. The
+  filter now sends every logged-out visitor to the home page —
+  from `/wp-admin/`, `/login`, and any "Log in" link — so only
+  someone who already knows the slug can reach the login page.
+  Links generated while already on the slug login page (lost
+  password, reset, post-logout) keep the slug, as do logged-in
+  users (reauth flows).
+- Fix: after logout, the login form with the "logged out" message is
+  now shown via the `logout_redirect` filter. `wp_login_url()` alone
+  cannot do this, because by the time it is called the user is
+  already logged out and the filter above would send them home.
+- Fix: saving settings with an empty slug field no longer silently
+  generates a fresh random slug (which could change the login URL
+  without anyone noticing). A blank field now keeps the stored slug;
+  the only ways to get a new slug are the "Generate new random slug"
+  button or typing a different slug. Activation still only generates
+  a slug when none is stored, so updates never change it.
+
 ## 1.0.5 — 2026-11-24
 
 - Fix: the custom login slug page forced `$action = 'login'` before
