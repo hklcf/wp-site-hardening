@@ -3,7 +3,7 @@
  * Plugin Name: WP Site Hardening
  * Plugin URI: https://github.com/hklcf/wp-site-hardening
  * Description: Hardening for any WordPress site: optionally disable XML-RPC, disable feeds, fully disable the REST API, and hide wp-login.php behind a randomly generated login slug. Nothing is disabled by default — switch each restriction on in Settings > WP Site Hardening. Switch the REST API to "authenticated only" to allow logged-in users and API-key requests (e.g. via WP API Key Authentication).
- * Version: 1.0.4
+ * Version: 1.0.5
  * Author: HKLCF
  * Author URI: https://github.com/hklcf
  * License: GPLv2 or later
@@ -17,7 +17,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'WSH_VERSION', '1.0.4' );
+define( 'WSH_VERSION', '1.0.5' );
 define( 'WSH_OPTION', 'wp_site_hardening_settings' );
 
 /* ------------------------------------------------------------------ */
@@ -442,12 +442,21 @@ add_filter( 'redirect_canonical', function ( $redirect_url ) {
 // variables global here, and initialising the two that core only sets
 // on POST, makes the included file behave exactly as if it had been
 // loaded directly.
+//
+// $action is taken from the request, exactly as wp-login.php itself
+// does — never forced to 'login'. Forcing it broke every other
+// wp-login.php action reached through the slug: logout, lost password,
+// register, password reset (action=rp) and post password all rendered
+// the plain login form instead of running.
 function wsh_load_login_page() {
 	if ( 1 !== (int) get_query_var( 'wsh_login' ) ) {
 		return;
 	}
 	global $action, $error, $interim_login, $user_login;
-	$action        = 'login';
+	$action = isset( $_REQUEST['action'] ) ? sanitize_key( wp_unslash( $_REQUEST['action'] ) ) : 'login';
+	if ( isset( $_GET['key'] ) ) {
+		$action = 'resetpass';
+	}
 	$error         = '';
 	$interim_login = false;
 	$user_login    = '';
@@ -479,6 +488,14 @@ function wsh_block_direct_wp_login() {
 	if ( isset( $_GET['action'] ) && 'postpass' === $_GET['action'] ) {
 		return;
 	}
+	// Logout must also reach wp-login.php: a direct
+	// wp-login.php?action=logout link (old bookmark, or a link built
+	// before the slug existed) would otherwise bounce to the home
+	// page with the user still logged in. Core checks the nonce and
+	// then redirects to the slug login page with ?loggedout=true.
+	if ( isset( $_GET['action'] ) && 'logout' === $_GET['action'] ) {
+		return;
+	}
 	// Do not reveal that a login page exists at another URL.
 	wp_redirect( home_url( '/' ), 302 );
 	exit;
@@ -496,6 +513,18 @@ add_action( 'init', function () {
 add_filter( 'login_url', function ( $login_url, $redirect, $force_reauth ) {
 	if ( ! wsh_hide_login_active() ) {
 		return $login_url;
+	}
+	// Never reveal the custom login slug to a logged-out visitor
+	// probing /wp-admin/. WordPress sends them here through
+	// auth_redirect(), which would otherwise put the slug in the
+	// address bar and give the secret away. Send them to the home
+	// page instead, so only someone who already knows the slug can
+	// reach the login page. This only applies in admin context while
+	// logged out: the login page itself, lost-password emails and
+	// "Log in" links on the front end are not admin context, so they
+	// still get the slug.
+	if ( ! is_user_logged_in() && is_admin() ) {
+		return home_url( '/' );
 	}
 	$url = wsh_login_url();
 	$args = array();

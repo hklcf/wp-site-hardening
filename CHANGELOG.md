@@ -4,6 +4,23 @@ All notable changes to WP Site Hardening are recorded here. This is the
 only place the full version history is kept; `README.md` and `readme.txt`
 only point here.
 
+## 1.0.5 — 2026-11-24
+
+- Fix: the custom login slug page forced `$action = 'login'` before
+  loading wp-login.php, so every other login action reached through
+  the slug rendered the plain login form instead of running: logout
+  did nothing, and lost password, register, password reset
+  (`action=rp`) and post password were all broken too. `$action` is
+  now taken from the request, exactly as wp-login.php itself does.
+- Fix: a direct `wp-login.php?action=logout` link now reaches
+  wp-login.php instead of bouncing to the home page with the user
+  still logged in. Core checks the nonce and then redirects to the
+  slug login page with `?loggedout=true`.
+- Fix: a logged-out visitor opening `/wp-admin/` was redirected to
+  the custom login URL, which put the secret slug in the address
+  bar. They are now sent to the home page instead, so only someone
+  who already knows the slug can reach the login page.
+
 ## 1.0.4 — 2026-11-24
 
 - Defaults changed: nothing is disabled by default. A fresh install changes
