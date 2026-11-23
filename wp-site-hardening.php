@@ -3,7 +3,7 @@
  * Plugin Name: WP Site Hardening
  * Plugin URI: https://github.com/hklcf/wp-site-hardening
  * Description: Hardening for any WordPress site: optionally disable XML-RPC, disable feeds, fully disable the REST API, and hide wp-login.php behind a randomly generated login slug. Nothing is disabled by default — switch each restriction on in Settings > WP Site Hardening. Switch the REST API to "authenticated only" to allow logged-in users and API-key requests (e.g. via WP API Key Authentication).
- * Version: 1.0.5
+ * Version: 1.0.6
  * Author: HKLCF
  * Author URI: https://github.com/hklcf
  * License: GPLv2 or later
@@ -17,7 +17,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'WSH_VERSION', '1.0.5' );
+define( 'WSH_VERSION', '1.0.6' );
 define( 'WSH_OPTION', 'wp_site_hardening_settings' );
 
 /* ------------------------------------------------------------------ */
@@ -514,16 +514,18 @@ add_filter( 'login_url', function ( $login_url, $redirect, $force_reauth ) {
 	if ( ! wsh_hide_login_active() ) {
 		return $login_url;
 	}
-	// Never reveal the custom login slug to a logged-out visitor
-	// probing /wp-admin/. WordPress sends them here through
-	// auth_redirect(), which would otherwise put the slug in the
-	// address bar and give the secret away. Send them to the home
-	// page instead, so only someone who already knows the slug can
-	// reach the login page. This only applies in admin context while
-	// logged out: the login page itself, lost-password emails and
-	// "Log in" links on the front end are not admin context, so they
-	// still get the slug.
-	if ( ! is_user_logged_in() && is_admin() ) {
+	// Never reveal the custom login slug to a logged-out visitor.
+	// WordPress sends logged-out visitors here through auth_redirect()
+	// (/wp-admin/), through wp_redirect_admin_locations() (/login,
+	// /login.php), and through every "Log in" link on the front end —
+	// any of those would put the slug in the address bar and give the
+	// secret away. Send them to the home page instead, so only
+	// someone who already knows the slug can reach the login page.
+	// Exception: links generated while already on the slug login page
+	// (lost-password / reset / post-logout screens) keep the slug —
+	// the visitor is already there, so nothing new is revealed.
+	// Logged-in users (reauth flows, admin links) also keep the slug.
+	if ( ! is_user_logged_in() && empty( $GLOBALS['wsh_via_slug'] ) ) {
 		return home_url( '/' );
 	}
 	$url = wsh_login_url();
@@ -544,20 +546,55 @@ add_filter( 'logout_url', function ( $logout_url, $redirect ) {
 	if ( ! wsh_hide_login_active() ) {
 		return $logout_url;
 	}
-	$url = add_query_arg( 'action', 'logout', wsh_login_url() );
-	// Keep the nonce WordPress generated in the original URL.
-	$parts = wp_parse_url( $logout_url );
-	if ( ! empty( $parts['query'] ) ) {
-		parse_str( $parts['query'], $query );
-		if ( ! empty( $query['_wpnonce'] ) ) {
-			$url = add_query_arg( '_wpnonce', $query['_wpnonce'], $url );
+	// The URL arrives HTML-encoded (&amp;). Decode first, then keep
+	// the whole query string verbatim. In 1.0.5 this filter rebuilt
+	// the URL and copied only _wpnonce back with parse_str() — but
+	// parse_str() reads "action=logout&amp;_wpnonce=..." as a key
+	// literally named "amp;_wpnonce", so _wpnonce was silently
+	// dropped: every logout link had no nonce, WordPress only showed
+	// the "Are you sure?" page, and logout looped forever.
+	$url   = str_replace( '&amp;', '&', $logout_url );
+	$parts = wp_parse_url( $url );
+	if ( ! empty( $parts['path'] ) && false !== strpos( $parts['path'], 'wp-login.php' ) ) {
+		// Rebuild with the slug path, keeping scheme/host/query intact.
+		$new = '';
+		if ( ! empty( $parts['scheme'] ) ) {
+			$new .= $parts['scheme'] . '://';
 		}
+		if ( ! empty( $parts['host'] ) ) {
+			$new .= $parts['host'];
+		}
+		if ( ! empty( $parts['port'] ) ) {
+			$new .= ':' . $parts['port'];
+		}
+		$new .= str_replace( 'wp-login.php', wsh_get_login_slug() . '/', $parts['path'] );
+		if ( ! empty( $parts['query'] ) ) {
+			$new .= '?' . $parts['query'];
+		}
+		if ( ! empty( $parts['fragment'] ) ) {
+			$new .= '#' . $parts['fragment'];
+		}
+		$url = $new;
 	}
-	if ( '' !== $redirect ) {
-		$url = add_query_arg( 'redirect_to', $redirect, $url );
-	}
+	// If the URL already points at the slug (site_url filter rewrote
+	// it first), the decoded URL above already has action, nonce and
+	// redirect_to intact — return it as is.
 	return $url;
 }, 10, 2 );
+
+// After logout, show the login form with the "logged out" message.
+// (wp_login_url() alone cannot do this: by the time it is called the
+// user is already logged out, so the login_url filter above would
+// send them to the home page.)
+add_filter( 'logout_redirect', function ( $redirect_to, $requested_redirect_to, $user ) {
+	if ( ! wsh_hide_login_active() ) {
+		return $redirect_to;
+	}
+	if ( '' === $requested_redirect_to ) {
+		return add_query_arg( 'loggedout', 'true', wsh_login_url() );
+	}
+	return $redirect_to;
+}, 10, 3 );
 
 add_filter( 'lostpassword_url', function ( $lostpassword_url, $redirect = '' ) {
 	if ( ! wsh_hide_login_active() ) {
@@ -648,15 +685,28 @@ function wsh_render_admin_page() {
 			$notice = 'New random login slug generated. Bookmark the new login URL below — the old slug stops working immediately.';
 		} elseif ( isset( $_POST['wsh_login_slug'] ) ) {
 			$posted = sanitize_text_field( wp_unslash( $_POST['wsh_login_slug'] ) );
-			if ( '' === trim( $posted ) && ! empty( $_POST['wsh_hide_login'] ) ) {
-				// Empty field = generate a fresh random slug, not an error.
-				$new['login_slug'] = wsh_generate_login_slug();
-				$notice = 'Login slug was empty, so a new random slug was generated. Bookmark it below.';
+			if ( '' === trim( $posted ) ) {
+				// Blank field = keep the stored slug. A slug must never
+				// change silently on save: the only ways to get a new
+				// one are the "Generate new random slug" button above
+				// or typing a different slug here. (An empty field used
+				// to generate a fresh slug, which is how a slug could
+				// change without anyone noticing.) Only generate one
+				// when no slug is stored yet and Hide Login is on.
+				if ( '' === $settings['login_slug'] && ! empty( $_POST['wsh_hide_login'] ) ) {
+					$new['login_slug'] = wsh_generate_login_slug();
+					$notice = 'Login slug was empty, so a new random slug was generated. Bookmark it below.';
+				} else {
+					$new['login_slug'] = $settings['login_slug'];
+				}
 			} else {
 				$slug = wsh_sanitize_login_slug( $posted );
-				if ( '' === $slug && ! empty( $_POST['wsh_hide_login'] ) ) {
-					$notice = 'Login slug was empty or reserved, so Hide Login was left on with the previous slug. Pick a slug with 3–100 lowercase letters, digits, hyphens or underscores.';
+				if ( '' === $slug ) {
+					$notice = 'Login slug was empty or reserved, so the previous slug was kept. Pick a slug with 3–100 lowercase letters, digits, hyphens or underscores.';
 					$new['login_slug'] = $settings['login_slug'];
+					if ( '' === $new['login_slug'] && ! empty( $_POST['wsh_hide_login'] ) ) {
+						$new['login_slug'] = wsh_generate_login_slug();
+					}
 				} else {
 					$new['login_slug'] = $slug;
 				}
@@ -681,7 +731,7 @@ function wsh_render_admin_page() {
 		echo '<div class="notice notice-info"><p>' . esc_html( $notice ) . '</p></div>';
 	}
 	if ( '' !== $slug ) {
-		echo '<div class="notice notice-success"><p><strong>Your login URL is now:</strong> <code>' . esc_html( $login_url ) . '</code> — bookmark it. The old <code>/wp-login.php</code> and <code>/wp-admin/</code> (when logged out) no longer lead to a login page.</p></div>';
+		echo '<div class="notice notice-success"><p><strong>Your login URL is now:</strong> <code>' . esc_html( $login_url ) . '</code> — bookmark it. The old <code>/wp-login.php</code>, <code>/wp-admin/</code> and <code>/login</code> (when logged out) no longer lead to a login page.</p></div>';
 	}
 	echo '<p>Hardening for this site. Works with <a href="https://github.com/hklcf/wp-api-key-authentication" target="_blank" rel="noopener">WP API Key Authentication</a> (same author, download it from GitHub) — switch the REST API below to “authenticated only” to let a valid API key through. If you lose the custom login slug, add <code>define( \'WP_SITE_HARDENING_DISABLE_HIDE_LOGIN\', true );</code> to <code>wp-config.php</code> and the normal login URL works again.</p>';
 	echo '<form method="post">';
@@ -705,7 +755,7 @@ function wsh_render_admin_page() {
 	echo '<tr><th scope="row">Custom login URL</th><td><label><input type="checkbox" name="wsh_hide_login" value="1"' . checked( $settings['hide_login'], 1, false ) . ' /> Hide wp-login.php behind a custom slug</label><br /><br />';
 	echo '<label for="wsh_login_slug">Login slug</label> <input type="text" name="wsh_login_slug" id="wsh_login_slug" value="' . esc_attr( $settings['login_slug'] ) . '" class="regular-text code" /> ';
 	submit_button( 'Generate new random slug', 'secondary', 'wsh_regenerate_slug', false );
-	echo '<p class="description">The slug is randomly generated on activation (e.g. <code>login-a1b2c3d4e5</code>) — there is no fixed default, so it cannot be guessed from the README. Leave the field blank to generate a fresh random slug on save, or type your own. Login page becomes <code>' . esc_html( home_url( '/' ) ) . '<span id="wsh-slug-preview">' . esc_html( $settings['login_slug'] ) . '</span>/</code>. Use 3–100 lowercase letters, digits, hyphens or underscores. Do not use <code>login</code>, <code>admin</code>, <code>wp-admin</code> or <code>wp-json</code> on their own. Changing the slug logs nobody out, but the old slug stops working immediately.</p></td></tr>';
+	echo '<p class="description">The slug is randomly generated on activation (e.g. <code>login-a1b2c3d4e5</code>) — there is no fixed default, so it cannot be guessed from the README. Leave the field blank to keep the current slug — a fresh random slug only comes from the Generate button above, or by typing a different slug here. Login page becomes <code>' . esc_html( home_url( '/' ) ) . '<span id="wsh-slug-preview">' . esc_html( $settings['login_slug'] ) . '</span>/</code>. Use 3–100 lowercase letters, digits, hyphens or underscores. Do not use <code>login</code>, <code>admin</code>, <code>wp-admin</code> or <code>wp-json</code> on their own. Changing the slug logs nobody out, but the old slug stops working immediately.</p></td></tr>';
 
 	echo '</table>';
 	submit_button( 'Save Settings', 'primary', 'wsh_save' );
