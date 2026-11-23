@@ -4,6 +4,18 @@ All notable changes to WP Site Hardening are recorded here. This is the
 only place the full version history is kept; `README.md` and `readme.txt`
 only point here.
 
+## 1.0.9 — 2026-11-24
+
+- The oEmbed discovery-link check no longer reads WP API Key
+  Authentication's settings. Deciding whether oEmbed is public is
+  the API Key plugin's job, not this plugin's: it now removes the
+  links itself when it blocks oEmbed. This plugin only judges its
+  own REST mode — links are removed whenever this plugin blocks
+  anonymous REST, and stay when its REST mode is 'off'. Neither
+  plugin reads the other's settings, so the links are shown only
+  when both let oEmbed through, and each plugin works correctly
+  on its own.
+
 ## 1.0.8 — 2026-11-24
 
 - Security fix: the login page loader only checked the `wsh_login`
