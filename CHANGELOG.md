@@ -1,7 +1,8 @@
 # Changelog
 
-All notable changes to WP Site Hardening are recorded here.
-The full changelog also appears in `README.md` and `readme.txt`.
+All notable changes to WP Site Hardening are recorded here. This is the
+only place the full version history is kept; `README.md` and `readme.txt`
+only point here.
 
 ## 1.0.4 — 2026-11-24
 
