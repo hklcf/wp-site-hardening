@@ -4,6 +4,19 @@ All notable changes to WP Site Hardening are recorded here. This is the
 only place the full version history is kept; `README.md` and `readme.txt`
 only point here.
 
+## 1.0.7 — 2026-11-24
+
+- Change: WordPress no longer prints oEmbed discovery links — or
+  the host script that makes embedded iframes responsive — into the
+  page `<head>` when the oEmbed endpoint is closed to anonymous
+  visitors, since the links would only advertise an endpoint that
+  returns 401. The links are shown again as soon as oEmbed becomes
+  publicly reachable: this plugin's REST mode `off`, and WP API Key
+  Authentication (when installed) either open or in allowlist mode
+  with a whitelist pattern matching `/oembed/1.0/embed` (its
+  default whitelist has no oEmbed routes, and in `require_all` mode
+  the whitelist is inactive, so oEmbed stays closed there).
+
 ## 1.0.6 — 2026-11-24
 
 - Fix: logout was still broken in 1.0.5. The logout link had no nonce at
