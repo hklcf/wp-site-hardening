@@ -3,7 +3,7 @@
  * Plugin Name: WP Site Hardening
  * Plugin URI: https://github.com/hklcf/wp-site-hardening
  * Description: Hardening for any WordPress site: optionally disable XML-RPC, disable feeds, fully disable the REST API, and hide wp-login.php behind a randomly generated login slug. Nothing is disabled by default — switch each restriction on in Settings > WP Site Hardening. Switch the REST API to "authenticated only" to allow logged-in users and API-key requests (e.g. via WP API Key Authentication).
- * Version: 1.0.6
+ * Version: 1.0.7
  * Author: HKLCF
  * Author URI: https://github.com/hklcf
  * License: GPLv2 or later
@@ -17,7 +17,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'WSH_VERSION', '1.0.6' );
+define( 'WSH_VERSION', '1.0.7' );
 define( 'WSH_OPTION', 'wp_site_hardening_settings' );
 
 /* ------------------------------------------------------------------ */
@@ -352,10 +352,63 @@ add_filter( 'rest_authentication_errors', function ( $result ) {
 }, 30 );
 
 // Hide the REST API link from <head> and from HTTP headers, so
+// Whether an anonymous visitor can actually fetch the oEmbed
+// endpoint. The discovery links are only useful when that is true,
+// which needs BOTH this plugin and WP API Key Authentication (when
+// it is installed) to let anonymous requests through to oEmbed:
+// this plugin's REST mode must be 'off', and the API Key plugin
+// must either be inactive / open, or in allowlist mode with a
+// whitelist pattern matching /oembed/1.0/embed (its default
+// whitelist has no oEmbed routes, and in require_all mode the
+// whitelist is inactive, so oEmbed stays closed).
+function wsh_oembed_is_public() {
+	if ( 'off' !== wsh_rest_mode() ) {
+		return false;
+	}
+	$settings = get_option( 'wpaka_settings' );
+	if ( ! is_array( $settings ) ) {
+		return true;
+	}
+	$mode = isset( $settings['access_mode'] ) ? $settings['access_mode'] : 'require_all';
+	if ( 'require_all' === $mode ) {
+		return false;
+	}
+	if ( 'allowlist' === $mode ) {
+		$routes = isset( $settings['public_routes'] ) ? preg_split( "/\r\n|\r|\n/", $settings['public_routes'] ) : array();
+		foreach ( $routes as $pattern ) {
+			$pattern = trim( (string) $pattern );
+			if ( '' === $pattern ) {
+				continue;
+			}
+			if ( '*' === substr( $pattern, -1 ) ) {
+				if ( 0 === strpos( '/oembed/1.0/embed', rtrim( $pattern, '*' ) ) ) {
+					return true;
+				}
+			} elseif ( '/oembed/1.0/embed' === $pattern ) {
+				return true;
+			}
+		}
+		return false;
+	}
+	return true;
+}
+
 // /wp-json/ is not advertised to anonymous visitors.
 add_action( 'init', function () {
 	remove_action( 'wp_head', 'rest_output_link_wp_head', 10 );
 	remove_action( 'template_redirect', 'rest_output_link_header', 11 );
+	// When oEmbed is closed to anonymous visitors, WordPress still
+	// prints oEmbed discovery links (and the host script that makes
+	// embedded iframes responsive) into every page's <head>,
+	// advertising an endpoint that only returns 401. Remove them so
+	// the HTML does not advertise a dead endpoint. When oEmbed is
+	// publicly reachable again — this plugin's REST mode 'off' and
+	// the API Key plugin's whitelist opening /oembed/1.0/embed —
+	// the links stay.
+	if ( ! wsh_oembed_is_public() ) {
+		remove_action( 'wp_head', 'wp_oembed_add_discovery_links' );
+		remove_action( 'wp_head', 'wp_oembed_add_host_js' );
+	}
 } );
 
 /* ------------------------------------------------------------------ */
