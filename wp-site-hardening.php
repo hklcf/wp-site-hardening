@@ -3,7 +3,7 @@
  * Plugin Name: WP Site Hardening
  * Plugin URI: https://github.com/hklcf/wp-site-hardening
  * Description: Hardening for any WordPress site: optionally disable XML-RPC, disable feeds, fully disable the REST API, and hide wp-login.php behind a randomly generated login slug. Nothing is disabled by default — switch each restriction on in Settings > WP Site Hardening. Switch the REST API to "authenticated only" to allow logged-in users and API-key requests (e.g. via WP API Key Authentication).
- * Version: 1.0.7
+ * Version: 1.0.8
  * Author: HKLCF
  * Author URI: https://github.com/hklcf
  * License: GPLv2 or later
@@ -17,7 +17,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'WSH_VERSION', '1.0.7' );
+define( 'WSH_VERSION', '1.0.8' );
 define( 'WSH_OPTION', 'wp_site_hardening_settings' );
 
 /* ------------------------------------------------------------------ */
@@ -503,6 +503,26 @@ add_filter( 'redirect_canonical', function ( $redirect_url ) {
 // the plain login form instead of running.
 function wsh_load_login_page() {
 	if ( 1 !== (int) get_query_var( 'wsh_login' ) ) {
+		return;
+	}
+	// The query var alone is not enough: it is a registered query
+	// var, so anyone can set it with ?wsh_login=1 on any URL and
+	// reach the login page without knowing the slug — which defeats
+	// the whole point of hiding the login page. Require the request
+	// path itself to be the slug. The query string (action=logout,
+	// action=lostpassword, key=... etc.) is not part of the path, so
+	// every login action reached through the slug still works.
+	$slug = wsh_get_login_slug();
+	$path = '';
+	if ( ! empty( $_SERVER['REQUEST_URI'] ) ) {
+		$path = (string) wp_parse_url( wp_unslash( $_SERVER['REQUEST_URI'] ), PHP_URL_PATH );
+	}
+	// Strip a subdirectory-install prefix (home path) if present.
+	$home_path = (string) wp_parse_url( home_url( '/' ), PHP_URL_PATH );
+	if ( '' !== $home_path && '/' !== $home_path && 0 === strpos( $path, $home_path ) ) {
+		$path = substr( $path, strlen( $home_path ) );
+	}
+	if ( '' === $slug || trim( $path, '/' ) !== $slug ) {
 		return;
 	}
 	global $action, $error, $interim_login, $user_login;
