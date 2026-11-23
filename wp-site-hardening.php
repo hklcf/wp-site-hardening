@@ -2,8 +2,8 @@
 /**
  * Plugin Name: WP Site Hardening
  * Plugin URI: https://github.com/hklcf/wp-site-hardening
- * Description: Hardening for any WordPress site: disables XML-RPC, disables feeds, fully disables the REST API by default, and hides wp-login.php behind a randomly generated login slug. Switch the REST API to "authenticated only" to allow logged-in users and API-key requests (e.g. via WP API Key Authentication).
- * Version: 1.0.3
+ * Description: Hardening for any WordPress site: optionally disable XML-RPC, disable feeds, fully disable the REST API, and hide wp-login.php behind a randomly generated login slug. Nothing is disabled by default — switch each restriction on in Settings > WP Site Hardening. Switch the REST API to "authenticated only" to allow logged-in users and API-key requests (e.g. via WP API Key Authentication).
+ * Version: 1.0.4
  * Author: HKLCF
  * Author URI: https://github.com/hklcf
  * License: GPLv2 or later
@@ -17,7 +17,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'WSH_VERSION', '1.0.3' );
+define( 'WSH_VERSION', '1.0.4' );
 define( 'WSH_OPTION', 'wp_site_hardening_settings' );
 
 /* ------------------------------------------------------------------ */
@@ -27,10 +27,15 @@ define( 'WSH_OPTION', 'wp_site_hardening_settings' );
 /**
  * Default settings.
  *
+ * Nothing is disabled by default: a fresh install changes nothing
+ * until the site owner switches a restriction on in Settings >
+ * WP Site Hardening.
+ *
  * rest_mode:
- *   - 'fully_disabled' (default, as instructed): every REST request
- *     gets 403, including authenticated ones. The REST API is fully
- *     closed until the site owner switches it back on.
+ *   - 'off' (default): leave the REST API as WordPress default.
+ *   - 'fully_disabled': every REST request gets 403, including
+ *     authenticated ones. The REST API stays fully closed until the
+ *     site owner switches it back off.
  *   - 'authenticated_only': anonymous requests to /wp-json/ get 401.
  *     Logged-in users and requests authenticated by another plugin
  *     keep working. This is the mode to use with WP API Key
@@ -39,14 +44,13 @@ define( 'WSH_OPTION', 'wp_site_hardening_settings' );
  *     key is recognised as authenticated before this check runs.
  *     Pick this mode when you need API publishing, and switch back to
  *     fully_disabled when you do not.
- *   - 'off': leave the REST API as WordPress default.
  */
 function wsh_default_settings() {
 	return array(
-		'disable_xmlrpc'    => 1,
-		'disable_feeds'     => 1,
-		'rest_mode'         => 'fully_disabled',
-		'hide_login'        => 1,
+		'disable_xmlrpc'    => 0,
+		'disable_feeds'     => 0,
+		'rest_mode'         => 'off',
+		'hide_login'        => 0,
 		'login_slug'        => '', // Empty = generate a random slug on activation.
 		'feed_status'       => 301, // 301 redirect to home, or 404.
 	);
@@ -299,11 +303,11 @@ add_action( 'init', function () {
 } );
 
 /* ------------------------------------------------------------------ */
-/* 3. Disable the REST API (/wp-json/) by default                     */
+/* 3. Disable the REST API (/wp-json/)                                 */
 /*                                                                     */
-/* Default (fully_disabled): every REST request gets 403, including    */
-/* authenticated ones. Switch to authenticated_only when you need to   */
-/* use the API, then switch back.                                      */
+/* Default (off): leave the REST API as WordPress default. Switch to   */
+/* fully_disabled to close it, or to authenticated_only when you need  */
+/* to use the API, then switch back.                                   */
 /*                                                                     */
 /* Works with WP API Key Authentication: that plugin runs              */
 /* determine_current_user at priority 20, this plugin checks at        */
@@ -313,9 +317,9 @@ add_action( 'init', function () {
 
 function wsh_rest_mode() {
 	$settings = wsh_get_settings();
-	$mode     = isset( $settings['rest_mode'] ) ? $settings['rest_mode'] : 'fully_disabled';
+	$mode     = isset( $settings['rest_mode'] ) ? $settings['rest_mode'] : 'off';
 	if ( ! in_array( $mode, array( 'authenticated_only', 'fully_disabled', 'off' ), true ) ) {
-		return 'fully_disabled';
+		return 'off';
 	}
 	return $mode;
 }
@@ -597,7 +601,7 @@ function wsh_render_admin_page() {
 			'disable_xmlrpc' => isset( $_POST['wsh_disable_xmlrpc'] ) ? 1 : 0,
 			'disable_feeds'  => isset( $_POST['wsh_disable_feeds'] ) ? 1 : 0,
 			'hide_login'     => isset( $_POST['wsh_hide_login'] ) ? 1 : 0,
-			'rest_mode'      => 'fully_disabled',
+			'rest_mode'      => 'off',
 			'feed_status'    => 301,
 			'login_slug'     => $settings['login_slug'],
 		);
@@ -664,10 +668,10 @@ function wsh_render_admin_page() {
 	echo '<label><input type="radio" name="wsh_feed_status" value="404"' . checked( (int) $settings['feed_status'], 404, false ) . ' /> Return 404</label></td></tr>';
 
 	echo '<tr><th scope="row">REST API (<code>/wp-json/</code>)</th><td>';
-	echo '<label><input type="radio" name="wsh_rest_mode" value="fully_disabled"' . checked( $settings['rest_mode'], 'fully_disabled', false ) . ' /> Fully disable for everyone (default)</label><br />';
+	echo '<label><input type="radio" name="wsh_rest_mode" value="fully_disabled"' . checked( $settings['rest_mode'], 'fully_disabled', false ) . ' /> Fully disable for everyone</label><br />';
 	echo '<label><input type="radio" name="wsh_rest_mode" value="authenticated_only"' . checked( $settings['rest_mode'], 'authenticated_only', false ) . ' /> Restrict to authenticated requests — use with an API key</label><br />';
-	echo '<label><input type="radio" name="wsh_rest_mode" value="off"' . checked( $settings['rest_mode'], 'off', false ) . ' /> Off — leave the REST API as it is</label>';
-	echo '<p class="description"><strong>Fully disable (default):</strong> every REST request gets 403, including authenticated ones. The API stays closed until you switch it back on here.<br /><strong>Authenticated only:</strong> anonymous visitors hitting <code>/wp-json/</code> get 401, logged-in users and API-key requests keep working. Use this mode with <a href="https://github.com/hklcf/wp-api-key-authentication" target="_blank" rel="noopener">WP API Key Authentication</a> (same author, download it from GitHub): a valid API key counts as authenticated, so API publishing works while anonymous access stays closed. Switch back to Fully disable when you no longer need the API.</p></td></tr>';
+	echo '<label><input type="radio" name="wsh_rest_mode" value="off"' . checked( $settings['rest_mode'], 'off', false ) . ' /> Off — leave the REST API as it is (default)</label>';
+	echo '<p class="description"><strong>Fully disable:</strong> every REST request gets 403, including authenticated ones. The API stays closed until you switch it back on here.<br /><strong>Authenticated only:</strong> anonymous visitors hitting <code>/wp-json/</code> get 401, logged-in users and API-key requests keep working. Use this mode with <a href="https://github.com/hklcf/wp-api-key-authentication" target="_blank" rel="noopener">WP API Key Authentication</a> (same author, download it from GitHub): a valid API key counts as authenticated, so API publishing works while anonymous access stays closed. Switch back to Fully disable when you no longer need the API.</p></td></tr>';
 
 	echo '<tr><th scope="row">Custom login URL</th><td><label><input type="checkbox" name="wsh_hide_login" value="1"' . checked( $settings['hide_login'], 1, false ) . ' /> Hide wp-login.php behind a custom slug</label><br /><br />';
 	echo '<label for="wsh_login_slug">Login slug</label> <input type="text" name="wsh_login_slug" id="wsh_login_slug" value="' . esc_attr( $settings['login_slug'] ) . '" class="regular-text code" /> ';

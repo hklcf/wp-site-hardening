@@ -4,21 +4,23 @@ Hardening for any WordPress site. One plugin, four jobs:
 
 1. **Disable XML-RPC** — `/xmlrpc.php` returns 403, methods are emptied, RSD / WLW manifest links and the `X-Pingback` header are removed.
 2. **Disable feeds** — `/feed/` and `/comments/feed/` redirect to the home page (301 by default, or 404 if you pick it), and feed links are removed from `<head>`.
-3. **Fully disable the REST API by default** — every request to `/wp-json/` gets 403, including authenticated ones. Switch it back on when you need it.
-4. **Custom admin login URL** — the login page moves from `/wp-login.php` to a randomly generated slug, e.g. `https://example.com/login-a1b2c3d4e5/`. Direct `/wp-login.php` requests are redirected to the home page.
+3. **Fully disable the REST API** (optional) — every request to `/wp-json/` gets 403, including authenticated ones. Switch it on when you need it.
+4. **Custom admin login URL** (optional) — the login page moves from `/wp-login.php` to a randomly generated slug, e.g. `https://example.com/login-a1b2c3d4e5/`. Direct `/wp-login.php` requests are redirected to the home page.
+
+Nothing is disabled by default. A fresh install changes nothing until you switch a restriction on in Settings → WP Site Hardening.
 
 Author: **HKLCF**
 Plugin URI: https://github.com/hklcf/wp-site-hardening
 
-## REST API: fully closed by default, open it when you need it
+## REST API: off by default, close it when you need it
 
 | Mode | Anonymous `/wp-json/` | Logged-in / API-key `/wp-json/` |
 | --- | --- | --- |
-| Fully disable for everyone (default) | 403 | 403 |
+| Fully disable for everyone | 403 | 403 |
 | Restrict to authenticated requests | 401 | Works |
-| Off | As WordPress default | Works |
+| Off (default) | As WordPress default | Works |
 
-The default is **fully disabled**, as intended: the API stays closed until the site owner switches it back on in Settings → WP Site Hardening.
+The default is **off**: the API stays as WordPress default until the site owner switches a restriction on in Settings → WP Site Hardening.
 
 ### Working with WP API Key Authentication
 
@@ -28,26 +30,26 @@ This plugin is designed to work with [WP API Key Authentication](https://github.
 - In **authenticated only** mode, a valid API key passes and API publishing works, while anonymous requests still get 401.
 - In **fully disabled** mode, even a valid API key gets 403. That is deliberate: fully disabled means fully disabled.
 
-So the workflow is: leave it fully disabled most of the time; when you need to publish or read via the API, switch to **authenticated only**, do the work, then switch back to **fully disabled**.
+So the workflow is: switch a restriction on only when you need it; when you need to publish or read via the API, switch to **authenticated only**, do the work, then switch back to **fully disabled** (or off).
 
 ## Installation
 
 1. Copy the `wp-site-hardening` folder into `wp-content/plugins/`.
 2. Activate **WP Site Hardening** in WordPress admin.
-3. Open **Settings → WP Site Hardening** and check the login URL. Bookmark it.
+3. Open **Settings → WP Site Hardening** and switch on the restrictions you want. If you switch on the custom login URL, bookmark it — the slug is randomly generated on activation, so there is no fixed default slug to guess.
 
-No configuration is required — the defaults are the recommended ones. The login slug is randomly generated on activation, so there is no fixed default slug to guess.
+Nothing is enabled by default, so activating the plugin changes nothing until you switch a restriction on.
 
 ## Settings
 
 Settings → WP Site Hardening:
 
-- **XML-RPC** — on by default. Off only if you need Jetpack, an old mobile app, or pingbacks.
-- **Feeds** — on by default. Choose 301 redirect to home, or 404.
-- **REST API** — `fully_disabled` by default (see table above).
-- **Custom login URL** — on by default, slug randomly generated on activation (e.g. `login-a1b2c3d4e5`). Change it any time, or press **Generate new random slug**; the old slug stops working immediately. Use 3–100 lowercase letters, digits, hyphens or underscores. `login`, `admin`, `wp-admin`, `wp-json`, `feed` and `comments` on their own are reserved.
+- **XML-RPC** — off by default. Switch it on to disable XML-RPC. Leave it off if you need Jetpack, an old mobile app, or pingbacks.
+- **Feeds** — off by default. Choose 301 redirect to home, or 404.
+- **REST API** — `off` by default (see table above).
+- **Custom login URL** — off by default, slug randomly generated on activation (e.g. `login-a1b2c3d4e5`). Change it any time, or press **Generate new random slug**; the old slug stops working immediately. Use 3–100 lowercase letters, digits, hyphens or underscores. `login`, `admin`, `wp-admin`, `wp-json`, `feed` and `comments` on their own are reserved.
 
-## After activation, what changes
+## When everything is switched on, what changes
 
 | Before | After |
 | --- | --- |
@@ -55,7 +57,7 @@ Settings → WP Site Hardening:
 | `https://example.com/wp-admin/` (logged out) | Redirects to the custom login URL |
 | `https://example.com/login-a1b2c3d4e5/` | Login page |
 | `https://example.com/xmlrpc.php` | 403 |
-| `https://example.com/wp-json/` | 403 (default) |
+| `https://example.com/wp-json/` | 403 |
 | `https://example.com/wp-json/` (authenticated only mode, logged in / API key) | Works |
 | `https://example.com/feed/` | 301 to home page |
 | `https://example.com/comments/feed/` | 301 to home page |
@@ -81,6 +83,10 @@ Deactivating the plugin also restores `/wp-login.php`. Deleting the plugin remov
 - Hiding the login URL is obscurity, not authentication. It reduces automated scanning; it does not replace a strong password.
 
 ## Changelog
+
+### 1.0.4
+
+- Defaults changed: nothing is disabled by default. A fresh install changes nothing until the site owner switches a restriction on (XML-RPC off, feeds off, REST API `off`, custom login URL off). Existing saved settings are not changed by this update.
 
 ### 1.0.3
 
