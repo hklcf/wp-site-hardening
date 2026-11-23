@@ -43,19 +43,4 @@ Feed URLs redirect to the home page (301) by default. Search engines follow the 
 
 == Changelog ==
 
-= 1.0.4 =
-* Defaults changed: nothing is disabled by default. A fresh install changes nothing until the site owner switches a restriction on. Existing saved settings are not changed by this update.
-
-= 1.0.3 =
-* Settings page: WP API Key Authentication is now a link to its GitHub page.
-
-= 1.0.2 =
-* Fix: deferred rewrite flush to the next init, so turning hide-login off actually removes the old login slug instead of flushing it back into the database.
-
-= 1.0.1 =
-* Fix: load wp-login.php with its variables in global scope, so the custom login page no longer shows Undefined variable $user_login / $error warnings or a wrong login-action body class.
-
-= 1.0.0 =
-* Disable XML-RPC, disable feeds, fully disable REST API by default, custom login URL with random slug.
-* Settings page under Settings > WP Site Hardening.
-* uninstall.php removes settings on delete.
+See CHANGELOG.md for the full version history.

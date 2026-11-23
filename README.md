@@ -84,30 +84,7 @@ Deactivating the plugin also restores `/wp-login.php`. Deleting the plugin remov
 
 ## Changelog
 
-### 1.0.4
-
-- Defaults changed: nothing is disabled by default. A fresh install changes nothing until the site owner switches a restriction on (XML-RPC off, feeds off, REST API `off`, custom login URL off). Existing saved settings are not changed by this update.
-
-### 1.0.3
-
-- Settings page: "WP API Key Authentication" is now a link to https://github.com/hklcf/wp-api-key-authentication, in the intro paragraph and in the REST API description, so it can be downloaded from GitHub.
-
-### 1.0.2
-
-- Fix: rewrite rules were flushed in the settings save handler, but `init` had already run with the old settings, so turning hide-login off flushed the old slug rule back into the database and the old login URL kept working. Flush is now deferred to the next `init`, and a stale slug rule is cleaned up automatically when hide-login is off.
-
-### 1.0.1
-
-- Fix: load `wp-login.php` with its variables in global scope. The 1.0.0 version included it inside a closure, so `login_header()` saw a stale global `$action` (body class `login-action-delete_attachment`) and the login form showed "Undefined variable `$user_login` / `$error`" warnings with warning HTML injected into the username field. The custom login page now renders cleanly, exactly as the normal login page.
-
-### 1.0.0
-
-- Disable XML-RPC (filter + hard 403 + header/link removal).
-- Disable feeds (`/feed/`, `/comments/feed/`, all feed types) with 301 or 404.
-- REST API: fully disabled by default, authenticated-only mode for use with WP API Key Authentication.
-- Custom login URL with randomly generated slug on activation, rewrite rule, `login_url` / `logout_url` / `lostpassword_url` / `register_url` / `site_url` rewriting, and `wp-config.php` escape hatch.
-- Settings page under Settings → WP Site Hardening.
-- `uninstall.php`: deleting the plugin removes its settings.
+See `CHANGELOG.md` for the full version history.
 
 ## License
 
