@@ -4,6 +4,18 @@ All notable changes to WP Site Hardening are recorded here. This is the
 only place the full version history is kept; `README.md` and `readme.txt`
 only point here.
 
+## 1.0.8 — 2026-11-24
+
+- Security fix: the login page loader only checked the `wsh_login`
+  query var, which is a registered query var — so anyone could
+  reach the login page without knowing the slug just by opening
+  `/?wsh_login=1` on any URL, which defeated the whole point of
+  hiding the login page (the code is open source, so the var name
+  is public). The loader now also requires the request path itself
+  to be the slug. Login actions reached through the slug (logout,
+  lost password, register, password reset) are unaffected: the
+  query string is not part of the path check.
+
 ## 1.0.7 — 2026-11-24
 
 - Change: WordPress no longer prints oEmbed discovery links — or
